@@ -36,7 +36,7 @@ git add -A
 git diff --cached --quiet
 if errorlevel 1 (
     echo 提交改动...
-    git commit -q -m "更新 %DATE% %TIME%"
+    git commit -q -m "同步更新 (%DATE%)"
 ) else (
     echo 没有新改动需要提交。
 )
