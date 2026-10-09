@@ -172,11 +172,33 @@ https://github.com/zt215/wage-tool/releases
 3. 双击 **`发布到GitHub.bat`** —— 自动建 Release（tag = `v1.3.0`）并把 exe 传上去
 4. 完事。用户点「检查更新」就能看到新版并一键升级
 
-**第一次**用需要 GitHub Token（只存本机 `tools/github_token.txt`，不会上传）：
+**第一次**用需要一个 GitHub Token。不知道去哪儿拿？双击 **`获取Token.bat`**，
+它会直接帮你打开新建页面。手动操作的话：
 
-- 去 https://github.com/settings/tokens 新建
-- **fine-grained token**：勾 `Contents: Read and write`
-- 或 **classic token**：勾 `repo`
+**【推荐】经典 Token，3 步**
+
+1. 浏览器打开 https://github.com/settings/tokens/new
+   （或从 https://github.com/settings/tokens 点右上角
+   `Generate new token` → `Generate new token (classic)`）
+2. Note 填个名字（如 `wage-tool`），Expiration 选有效期
+   （建议 90 天；嫌麻烦可以选 `No expiration`）
+   权限列表里**勾上第一项 `repo`**（勾上后子项会自动全选）
+3. 拉到最底下点绿色的 **Generate token**
+
+页面上会出现一串 **`ghp_` 开头**的字符，**复制它**。
+
+> ⚠️ **这串字符只在生成时显示一次**，关掉页面就再也看不到了。
+> 丢了只能重新生成。之前提示"token 过期"多半就是有效期到了或者换过一次。
+
+**【备选】细粒度 Token（更安全，步骤多一点）**
+
+1. 打开 https://github.com/settings/personal-access-tokens/new
+2. Token name 填 `wage-tool`，Expiration 选有效期
+3. Repository access 选 `Only select repositories` → 勾上 `wage-tool`
+4. Repository permissions → 找到 **Contents** → 改成 **Read and write**
+5. 点 **Generate token**，复制 `github_pat_` 开头那串
+
+Token 只存本机 `tools/github_token.txt`（已在 `.gitignore` 里），不会上传。
 
 命令行也能发：
 
@@ -209,13 +231,15 @@ https://github.com/zt215/wage-tool/releases
 
 | 现象 | 原因 / 办法 |
 | --- | --- |
-| 提示「这看起来是仓库网址，不是 Token」 | 粘错东西了。Token 长这样：`ghp_AbCd...`，去 https://github.com/settings/tokens 生成 |
+| 提示「这看起来是仓库网址，不是 Token」 | 粘错东西了。Token 长这样：`ghp_AbCd...`，双击 `获取Token.bat` 去生成 |
 | 提示「Token 无效或已过期（401）」 | Token 过期或被撤销了。重新生成一个，程序会自动删掉旧的并让你重输 |
-| 提示「权限不够（403）」 | fine-grained token 忘了给 `Contents: Read and write`；classic token 忘了勾 `repo` |
+| 提示「权限不够（403）」 | classic token 忘了勾 `repo`；fine-grained 忘了给 `Contents: Read and write` |
 | 提示「仓库读不到（404）」 | fine-grained token 的 Repository access 里没勾上 `wage-tool` |
 | 想彻底换一个 Token | 双击「发布到GitHub.bat clear-token」，或直接删 `tools\github_token.txt` |
+| Token 忘了复制就关了页面 | GitHub 不会再次显示。只能重新生成一个（旧的可以顺手删掉） |
 
-> Token 只保存在本机 `tools\github_token.txt`，已经在 `.gitignore` 里，不会被提交。
+> classic token 的 `No expiration` 选项可以一劳永逸，但安全性差一点；
+> 选 90 天的话到期要换一次，程序会提示 401 并让你重新填。
 
 ### 文件名的约定
 
@@ -286,6 +310,7 @@ https://github.com/zt215/wage-tool/releases
 ├─ 启动工具.bat             一键启动
 ├─ 打包exe.bat              一键打包（生成带版本号的 exe）
 ├─ 推送到GitHub.bat         把源码推到 GitHub 仓库
+├─ 获取Token.bat            打开 GitHub 新建 Token 的页面
 ├─ 发布到GitHub.bat         一键发布到 GitHub Releases
 ├─ 生成更新包.bat           备用：生成要传到自己服务器的更新包
 ├─ requirements.txt
