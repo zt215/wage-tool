@@ -112,7 +112,10 @@ def selftest() -> int:
         app = QApplication.instance() or QApplication([])  # noqa: F841
         win = MainWindow()
         lines.append(f"主窗口创建成功，规则表列数: {win.tbl_rules.columnCount()}")
-        lines.append(f"预览表存在: {win.tbl_preview is not None}")
+        tabs = [win.tabs.tabText(i) for i in range(win.tabs.count())]
+        lines.append(f"页签数: {win.tabs.count()} {' | '.join(tabs)}")
+        same_page = win.tbl_preview.parentWidget().parentWidget() is win.tabs.widget(2)
+        lines.append(f"预览表与输出设置同页: {same_page}")
 
         import openpyxl
 

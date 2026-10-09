@@ -305,7 +305,11 @@ class MainWindow(QMainWindow):
         l6.addWidget(self.lbl_fmt_preview)
         page3_l.addWidget(g6)
 
+        # ---------- 操作按钮 ----------
         act = QHBoxLayout()
+        self.lbl_act_hint = QLabel("转换结果会直接显示在下面的表格里")
+        self.lbl_act_hint.setStyleSheet("color:#888;")
+        act.addWidget(self.lbl_act_hint)
         act.addStretch(1)
         self.btn_preview = QPushButton("预览转换结果")
         self.btn_preview.clicked.connect(self.do_preview)
@@ -315,28 +319,27 @@ class MainWindow(QMainWindow):
         act.addWidget(self.btn_preview)
         act.addWidget(self.btn_export)
         page3_l.addLayout(act)
-        page3_l.addStretch(1)
-        self.tabs.addTab(page3, "③ 输出设置")
 
-        # ================= 第 4 页：结果预览 =================
-        page4 = QWidget()
-        page4_l = QVBoxLayout(page4)
-        page4_l.setContentsMargins(10, 10, 10, 10)
+        # ---------- 预览表：和设置同页，点完按钮结果就在正下方 ----------
+        g5 = QGroupBox("转换结果预览")
+        g5.setMinimumHeight(200)
+        l5 = QVBoxLayout(g5)
         self.tbl_preview = QTableWidget(0, 0)
         self.tbl_preview.verticalHeader().setVisible(False)
         self.tbl_preview.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        page4_l.addWidget(self.tbl_preview)
-        self.tabs.addTab(page4, "④ 结果预览")
+        l5.addWidget(self.tbl_preview, 1)
+        page3_l.addWidget(g5, 1)
+        self.tabs.addTab(page3, "③ 输出与预览")
 
-        # ================= 第 5 页：日志 =================
-        page5 = QWidget()
-        page5_l = QVBoxLayout(page5)
-        page5_l.setContentsMargins(10, 10, 10, 10)
+        # ================= 第 4 页：日志 =================
+        page4 = QWidget()
+        page4_l = QVBoxLayout(page4)
+        page4_l.setContentsMargins(10, 10, 10, 10)
         self.txt_log = QPlainTextEdit()
         self.txt_log.setReadOnly(True)
         self.txt_log.setFont(QFont("Consolas", 9))
-        page5_l.addWidget(self.txt_log)
-        self.tabs.addTab(page5, "⑤ 日志")
+        page4_l.addWidget(self.txt_log)
+        self.tabs.addTab(page4, "④ 日志")
 
         # ================= 底部导航 =================
         nav = QHBoxLayout()
@@ -365,9 +368,8 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     PAGE_HINTS = [
         "第 1 步：分别添加初始表和样表，字段会自动识别出来",
-        "第 2 步：逐行核对规则，双击任意一行可编辑；确认后进入下一步",
-        "第 3 步：设置输出选项和字体格式（会自动记住）",
-        "第 4 步：这里看转换出来的结果，确认没问题再回上一页输出",
+        "第 2 步：逐行核对规则，双击任意一行可编辑",
+        "第 3 步：设好选项后点「预览转换结果」，结果显示在下方表格；确认没问题再「输出完成表」",
         "这里记录每一步的操作和结果",
     ]
 
@@ -810,9 +812,11 @@ class MainWindow(QMainWindow):
                     txt = str(v)
                 self.tbl_preview.setItem(i, j, QTableWidgetItem(txt))
         self.tbl_preview.resizeColumnsToContents()
+        self.tbl_preview.scrollToTop()
         self._log(
             f"预览完成：初始表 {stats['初始表人数']} 人 → 输出 {stats['输出行数']} 行"
             + (f"，重名改名 {stats['重命名人数']} 人" if stats["重命名人数"] else "")
+            + "（结果见下方表格）"
         )
         if len(rows) > 200:
             self._log(f"（预览仅显示前 200 行，共 {len(rows)} 行）")
