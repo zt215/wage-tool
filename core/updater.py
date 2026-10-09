@@ -236,7 +236,9 @@ def fetch_github_release(owner: str, repo: str, timeout: int = TIMEOUT_CHECK) ->
     return {
         "version": tag.lstrip("vV"),
         "url": asset.get("browser_download_url") or "",
-        "filename": asset.get("name") or exe_filename(tag.lstrip("vV")),
+        # 本机落地文件名由版本号决定，不跟随附件名 ——
+        # 附件名可能被浏览器/服务器把中文弄丢（例：员工..._v1.2.0.exe -> _v1.2.0.exe）
+        "filename": exe_filename(tag.lstrip("vV")),
         "size": int(asset.get("size") or 0),
         "sha256": digest,
         "notes": str(data.get("body") or ""),
@@ -291,7 +293,9 @@ def check(text: str, current: str = __version__, timeout: int = TIMEOUT_CHECK) -
             "size": int(data.get("size") or 0),
             "sha256": str(data.get("sha256") or ""),
             "url": url,
-            "filename": str(data.get("filename") or exe_filename(latest)),
+            # 本机落地文件名统一按版本号生成，不信任对方给的名字
+            # （GitHub 网页上传会把中文附件名弄丢，变成 _v1.2.0.exe 这种）
+            "filename": exe_filename(latest),
             "source": src,
             "source_kind": str(data.get("source_kind") or describe_source(src)),
         }

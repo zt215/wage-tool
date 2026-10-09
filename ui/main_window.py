@@ -896,17 +896,32 @@ class MainWindow(QMainWindow):
 
     def _on_silent_result(self, info: dict):
         self.settings.set("update.proxy_mode", updater.get_preferred_mode())
-        if info.get("has_update"):
-            self.btn_update.setText(f"发现新版本 {info['latest']}")
+        self.settings.set("update.last_check", info.get("latest", ""))
+        self.settings.save()
+
+        if not info.get("has_update"):
+            self._log(f"检查更新：已是最新版本（v{info['current']}）。")
+            return
+
+        self._log(f"检查更新：发现新版本 v{info['latest']}（当前 v{info['current']}）。")
+        ans = QMessageBox.question(
+            self,
+            "发现新版本",
+            f"发现新版本 v{info['latest']}，是否现在更新？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if ans == QMessageBox.Yes:
+            dlg = UpdateDialog(self.settings, self, preset_info=info)
+            dlg.updated.connect(self._on_updated)
+            dlg.exec()
+        else:
+            # 这次不更新，就在按钮上留个提示，下次点还能升
+            self.btn_update.setText(f"有新版本 v{info['latest']}")
             self.btn_update.setStyleSheet(
                 "background:#fff3cd;border:1px solid #e0b64a;border-radius:6px;"
                 "padding:6px 12px;font-weight:600;color:#7a5300;"
             )
-            self._log(f"检查更新：发现新版本 {info['latest']}（当前 {info['current']}），点右上角「检查更新」升级。")
-        else:
-            self._log(f"检查更新：已是最新版本（{info['current']}）。")
-        self.settings.set("update.last_check", info.get("latest", ""))
-        self.settings.save()
 
     def _on_updated(self, new_exe: str):
         self.save_settings()
