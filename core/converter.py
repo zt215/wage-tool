@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
-"""按规则把初始表记录转换成样表的一行行数据。"""
+"""按规则把初始表记录转换成样表的一行行数据。
+
+关键概念：
+- 一个人一条  ：把某人的全部记录汇总成一行（早期行为）
+- 一个月一条  ：按「税款所属期」再拆一层，一个人一个月一行（工资表要的就是这个）
+"""
 from __future__ import annotations
 
+import calendar
 import datetime as _dt
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -11,6 +17,9 @@ from .rules import Rule
 
 NAME_CANDIDATES = ("姓名", "名字", "员工姓名")
 ID_CANDIDATES = ("证件号码", "身份证号", "身份证号码", "证件号", "身份证")
+
+# 用来判定「哪个月」的字段（按顺序优先）
+PERIOD_FIELDS = ("税款所属期", "所属期", "税款所属月份", "期间", "月份", "会计日期")
 
 # 数字插入位置
 INSERT_POSITIONS = {
@@ -37,15 +46,59 @@ def to_number(v) -> float:
         return 0.0
 
 
-def period_to_date(text: str):
-    """把「2023年12月」这类文本转成 datetime，转不了原样返回。"""
+def period_to_date(text: str, day: str = "first"):
+    """把「2023年12月」这类文本转成 datetime，转不了原样返回。
+
+    day="first" → 当月 1 号；day="last" → 当月最后一天。
+    """
     m = PERIOD_RE.match(cell_text(text))
     if not m:
         return text
     y, mo = int(m.group(1)), int(m.group(2))
     if 1 <= mo <= 12:
-        return _dt.datetime(y, mo, 1)
+        d = calendar.monthrange(y, mo)[1] if day == "last" else 1
+        return _dt.datetime(y, mo, d)
     return text
+
+
+def period_sort_key(value) -> tuple:
+    """把「2023年12月」变成可排序的键：能识别月份的排前面，按年月升序。"""
+    t = cell_text(value)
+    m = PERIOD_RE.match(t)
+    if m:
+        return (0, int(m.group(1)), int(m.group(2)))
+    return (1, 0, 0, t)
+
+
+def pick_period_field(fields: list, records: list | None = None) -> str:
+    """找出「哪个月」用的字段。先按名字认，认不出来就看哪一列的值长得像「2023年12月」。"""
+    for c in PERIOD_FIELDS:
+        if c in fields:
+            return c
+    if records:
+        best, best_hit = "", 0
+        for f in fields:
+            hit = sum(1 for r in records if PERIOD_RE.match(cell_text(r.get(f))))
+            if hit > best_hit:
+                best, best_hit = f, hit
+        return best
+    return ""
+
+
+def split_by_period(records: list, period_field: str) -> list:
+    """把一个人的记录按月份拆开，返回 [(月份键, [该月记录...]), ...]，按月份升序。"""
+    if not period_field:
+        return [(period_sort_key(""), list(records))]
+    buckets: list = []
+    index: dict = {}
+    for rec in records:
+        k = period_sort_key(rec.get(period_field))
+        if k not in index:
+            index[k] = len(buckets)
+            buckets.append((k, []))
+        buckets[index[k]][1].append(rec)
+    buckets.sort(key=lambda kv: kv[0])
+    return buckets
 
 
 def pick_name_field(fields: list) -> str:
@@ -137,20 +190,38 @@ def _insert_index(name: str, num: int, position: str) -> str:
 
 
 def rename_duplicates(rows: list, name_key: str, position: str = "after_first") -> list:
-    """重名处理：同名的人自动改成 张1三 / 张2三。"""
+    """重名处理：同名的人自动改成 张1三 / 张2三。
+
+    注意：这是按「人」去重，不是按「行」。同一个人按月拆成多行时，
+    他的每一行都必须是同一个名字，不能给每个月都编一个号。
+    """
     if not name_key:
         return rows
-    counter = Counter(cell_text(r.get(name_key)) for r in rows)
-    duplicated = {n for n, c in counter.items() if c > 1 and n}
+    labels, _ = rename_person_labels([cell_text(r.get(name_key)) for r in rows], position)
+    for r, lab in zip(rows, labels):
+        r[name_key] = lab
+    return rows
+
+
+def rename_person_labels(names: list, position: str = "after_first") -> tuple[list, int]:
+    """给一批「人」的姓名做重名编号，返回 (编号后的名单, 被改过的人数)。"""
+    counter = Counter(n for n in names if n)
+    duplicated = {n for n, c in counter.items() if c > 1}
     if not duplicated:
-        return rows
+        return list(names), 0
     seen: dict = defaultdict(int)
-    for r in rows:
-        n = cell_text(r.get(name_key))
+    out: list = []
+    renamed = 0
+    for n in names:
         if n in duplicated:
             seen[n] += 1
-            r[name_key] = _insert_index(n, seen[n], position)
-    return rows
+            new = _insert_index(n, seen[n], position)
+            if new != n:
+                renamed += 1
+            out.append(new)
+        else:
+            out.append(n)
+    return out, renamed
 
 
 def convert(
@@ -160,13 +231,26 @@ def convert(
     rename_enabled: bool = True,
     rename_position: str = "after_first",
     period_to_date_enabled: bool = True,
+    monthly: bool = True,
+    period_field: str = "",
+    period_day: str = "first",
 ) -> tuple[list, dict]:
-    """把初始表转换成样表行数据（一人一行）。
+    """把初始表转换成样表行数据。
+
+    monthly=True  —— **一个人一个月一行**（工资表的正常形态）：
+        先按人分组，再按「税款所属期」拆开，每个月算一行，
+        会计日期就是这个月，金额是这个月发生的数（奖金、工资各归各的列）。
+    monthly=False —— 一个人一行：把全年所有记录加总到一行。
 
     返回 (行列表, 统计信息)。行列表里每个元素是 {样表字段: 值}。
     """
     groups, name_field, id_field = group_by_person(source.records, source.fields)
     active = [r for r in rules if r.enabled and r.mode != "skip" and r.target]
+
+    # 按月分行的依据字段（界面可改，默认自动认）
+    pf = period_field or pick_period_field(source.fields, source.records)
+    do_monthly = bool(monthly and pf)
+    stat_months: dict = {}
 
     # 哪一列用来放姓名（重名时只改这一列）
     name_column = ""
@@ -182,30 +266,37 @@ def convert(
     if not name_column and "姓名" in sample.columns:
         name_column = "姓名"
 
-    rows: list = []
-    for idx, g in enumerate(groups, start=1):
-        row: dict = {}
-        for r in active:
-            if r.mode == "seq":
-                row[r.target] = idx
-                continue
-            val = apply_rule(r, g.records)
-            if (
-                period_to_date_enabled
-                and val is not None
-                and isinstance(val, str)
-                and PERIOD_RE.match(val)
-            ):
-                val = period_to_date(val)
-            row[r.target] = val
-        rows.append(row)
+    # 重名只对「人」编号：同一个人不管拆出多少个月，用的都是同一个名字
+    labels, renamed = (
+        rename_person_labels([g.name for g in groups], rename_position)
+        if (rename_enabled and name_field)
+        else ([g.name for g in groups], 0)
+    )
 
-    renamed = 0
-    if rename_enabled:
-        before = [cell_text(r.get(name_column)) for r in rows] if name_column else []
-        rows = rename_duplicates(rows, name_column, rename_position)
-        after = [cell_text(r.get(name_column)) for r in rows] if name_column else []
-        renamed = sum(1 for a, b in zip(before, after) if a != b)
+    rows: list = []
+    seq = 0
+    for gi, g in enumerate(groups):
+        buckets = split_by_period(g.records, pf) if do_monthly else [(period_sort_key(""), g.records)]
+        stat_months[g.name or f"#{gi + 1}"] = len(buckets)
+        for _key, recs in buckets:
+            seq += 1
+            row: dict = {}
+            for r in active:
+                if r.mode == "seq":
+                    row[r.target] = seq
+                    continue
+                val = apply_rule(r, recs)
+                if (
+                    period_to_date_enabled
+                    and val is not None
+                    and isinstance(val, str)
+                    and PERIOD_RE.match(val)
+                ):
+                    val = period_to_date(val, period_day)
+                row[r.target] = val
+            if name_column and name_column in row and gi < len(labels):
+                row[name_column] = labels[gi]
+            rows.append(row)
 
     stats = {
         "初始表人数": len(groups),
@@ -214,5 +305,8 @@ def convert(
         "姓名列": name_column,
         "证件号字段": id_field,
         "生效规则数": len(active),
+        "按月分行": do_monthly,
+        "月份字段": pf if do_monthly else "",
+        "人均月数": (round(len(rows) / len(groups), 1) if groups else 0),
     }
     return rows, stats

@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from core import Settings, __version__, parse_sample, parse_source
-from core.converter import INSERT_POSITIONS, convert
+from core.converter import INSERT_POSITIONS, convert, pick_period_field
 from core.exporter import CellFormat, export
 from core.rules import Rule, auto_detect
 from core import updater
@@ -254,11 +254,33 @@ class MainWindow(QMainWindow):
         self.chk_period = QCheckBox("期间文本（2023年12月）自动转成日期")
         self.chk_period.setChecked(True)
         row2.addWidget(self.chk_period)
+        row2.addWidget(QLabel("会计日期取"))
+        self.cmb_day = QComboBox()
+        self.cmb_day.addItem("月初（12月1日）", "first")
+        self.cmb_day.addItem("月末（12月31日）", "last")
+        row2.addWidget(self.cmb_day)
         self.chk_clear = QCheckBox("清空样表第 2 行示例数据")
         self.chk_clear.setChecked(True)
         row2.addWidget(self.chk_clear)
         row2.addStretch(1)
         l4.addLayout(row2)
+
+        # —— 按月分行：工资表是「一个人一个月一条」——
+        row3 = QHBoxLayout()
+        self.chk_monthly = QCheckBox("按月分行（一个人一个月一条）")
+        self.chk_monthly.setChecked(True)
+        self.chk_monthly.setToolTip(
+            "勾上：按「税款所属期」拆开，每个人一个月一行，会计日期就是那个月；\n"
+            "不勾：把一个人全年记录加总到一行。"
+        )
+        row3.addWidget(self.chk_monthly)
+        row3.addWidget(QLabel("月份字段"))
+        self.cmb_period = QComboBox()
+        self.cmb_period.setMinimumWidth(130)
+        self.cmb_period.setToolTip("按哪一列判断是哪个月。默认自动认，认错可手动改。")
+        row3.addWidget(self.cmb_period)
+        row3.addStretch(1)
+        l4.addLayout(row3)
         page3_l.addWidget(g4)
 
         # ---------- 输出格式 ----------
@@ -395,7 +417,11 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.cmb_pos.setCurrentIndex(idx)
         self.chk_period.setChecked(s.get_bool("out.period_to_date"))
-        self.chk_clear.setChecked(s.get_bool("out.clear_example_row"))
+        di = self.cmb_day.findData(s.get_str("out.period_day") or "first")
+        self.cmb_day.setCurrentIndex(di if di >= 0 else 0)
+        self.chk_monthly.setChecked(s.get_bool("out.monthly"))
+        self.cmb_period.setEnabled(self.chk_monthly.isChecked())
+        self._fill_period_fields()
 
         self.chk_fmt.setChecked(s.get_bool("fmt.enabled"))
         fam = s.get_str("fmt.family") or "微软雅黑"
@@ -429,6 +455,9 @@ class MainWindow(QMainWindow):
         self.chk_rename.toggled.connect(self.save_settings)
         self.cmb_pos.currentIndexChanged.connect(self.save_settings)
         self.chk_period.toggled.connect(self.save_settings)
+        self.cmb_day.currentIndexChanged.connect(self.save_settings)
+        self.chk_monthly.toggled.connect(self._on_monthly_changed)
+        self.cmb_period.currentIndexChanged.connect(self.save_settings)
         self.chk_clear.toggled.connect(self.save_settings)
         self.chk_fmt.toggled.connect(self._on_fmt_changed)
         self.cmb_font.currentTextChanged.connect(self._on_fmt_changed)
@@ -437,6 +466,25 @@ class MainWindow(QMainWindow):
         self.cmb_align.currentIndexChanged.connect(self._on_fmt_changed)
         self.chk_fmt_header.toggled.connect(self._on_fmt_changed)
 
+    def _on_monthly_changed(self, *_):
+        self.cmb_period.setEnabled(self.chk_monthly.isChecked())
+        self.save_settings()
+
+    def _fill_period_fields(self):
+        """把初始表的字段填进「月份字段」下拉，默认选中自动认出来的那个（一般是税款所属期）。"""
+        saved = self.settings.get_str("out.period_field")
+        self.cmb_period.blockSignals(True)
+        self.cmb_period.clear()
+        auto = ""
+        if self.source:
+            self.cmb_period.addItems(self.source.fields)
+            auto = pick_period_field(self.source.fields, self.source.records)
+        if saved and self.cmb_period.findText(saved) >= 0:
+            self.cmb_period.setCurrentText(saved)
+        elif auto:
+            self.cmb_period.setCurrentText(auto)
+        self.cmb_period.blockSignals(False)
+
     def save_settings(self, *_):
         if self._loading:
             return
@@ -444,6 +492,10 @@ class MainWindow(QMainWindow):
         s.set("out.rename_enabled", self.chk_rename.isChecked())
         s.set("out.rename_position", self.cmb_pos.currentData() or "after_first")
         s.set("out.period_to_date", self.chk_period.isChecked())
+        s.set("out.period_day", self.cmb_day.currentData() or "first")
+        s.set("out.monthly", self.chk_monthly.isChecked())
+        if self.cmb_period.currentText():
+            s.set("out.period_field", self.cmb_period.currentText())
         s.set("out.clear_example_row", self.chk_clear.isChecked())
         s.set("fmt.enabled", self.chk_fmt.isChecked())
         s.set("fmt.family", self.cmb_font.currentText())
@@ -575,6 +627,7 @@ class MainWindow(QMainWindow):
         )
         self.list_source_fields.clear()
         self.list_source_fields.addItems(st.fields)
+        self._fill_period_fields()
         self.settings.set("last.source", path)
         self.settings.save()
         self._log(f"已载入初始表：{os.path.basename(path)}（{mode_txt}，字段 {len(st.fields)} 个）")
@@ -785,6 +838,9 @@ class MainWindow(QMainWindow):
             rename_enabled=self.chk_rename.isChecked(),
             rename_position=self.cmb_pos.currentData(),
             period_to_date_enabled=self.chk_period.isChecked(),
+            monthly=self.chk_monthly.isChecked(),
+            period_field=self.cmb_period.currentText(),
+            period_day=self.cmb_day.currentData() or "first",
         )
 
     def do_preview(self):
@@ -815,6 +871,11 @@ class MainWindow(QMainWindow):
         self.tbl_preview.scrollToTop()
         self._log(
             f"预览完成：初始表 {stats['初始表人数']} 人 → 输出 {stats['输出行数']} 行"
+            + (
+                f"（按月分行，依据「{stats['月份字段']}」，人均 {stats['人均月数']} 个月）"
+                if stats.get("按月分行")
+                else "（未按月分行，一人一行）"
+            )
             + (f"，重名改名 {stats['重命名人数']} 人" if stats["重命名人数"] else "")
             + "（结果见下方表格）"
         )

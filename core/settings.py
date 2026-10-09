@@ -65,6 +65,10 @@ DEFAULTS: dict[str, Any] = {
     "out.rename_position": "after_first",
     "out.period_to_date": True,
     "out.clear_example_row": True,
+    # 工资表是「一个人一个月一条」——默认按月分行
+    "out.monthly": True,
+    "out.period_field": "",        # 空 = 自动认（一般是税款所属期）
+    "out.period_day": "first",     # first=月初 / last=月末，决定会计日期写几号
     # —— 输出字体/颜色 ——
     "fmt.enabled": False,          # 默认不应用，完全跟随样表
     "fmt.family": "微软雅黑",

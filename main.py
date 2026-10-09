@@ -161,6 +161,12 @@ def cli_convert(argv) -> int:
     p.add_argument("--start-row", type=int, default=4, help="数据写入起始行，默认 4")
     p.add_argument("--no-rename", action="store_true", help="关闭重名规则")
     p.add_argument("--keep-example", action="store_true", help="保留样表示例数据行")
+    p.add_argument("--no-monthly", action="store_true",
+                   help="不按月分行（默认一个人一个月一条；加这个就变一人一行）")
+    p.add_argument("--period-field", default="",
+                   help="判断月份用哪一列，默认自动认（一般是税款所属期）")
+    p.add_argument("--period-day", default="first", choices=["first", "last"],
+                   help="会计日期取月初还是月末，默认 first")
     p.add_argument("--font", default="", help="数据行字体（不填则沿用样表格式）")
     p.add_argument("--font-size", type=float, default=11, help="字号，默认 11")
     p.add_argument("--color", default="#000000", help="字体颜色，如 #C00000")
@@ -181,6 +187,9 @@ def cli_convert(argv) -> int:
             st, sp, rules,
             rename_enabled=not args.no_rename,
             period_to_date_enabled=True,
+            monthly=not args.no_monthly,
+            period_field=args.period_field,
+            period_day=args.period_day,
         )
         fmt = CellFormat(
             enabled=bool(args.font),
