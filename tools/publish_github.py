@@ -388,6 +388,22 @@ def main():
     print(f"      上传完成：{asset.get('name')}"
           f"（{asset.get('size', 0) / 1024 / 1024:.1f} MB）")
 
+    # GitHub 网页上传历史上会把中文附件名截断（员工..._v1.2.0.exe -> _v1.2.0.exe），
+    # 上传完检查一下，被改了就用 API 改回来。
+    want = os.path.basename(exe)
+    got = str(asset.get("name") or "")
+    if got != want:
+        print(f"      ⚠ 附件名被截断成了 {got!r}，正在改回 {want!r} …")
+        try:
+            asset = api_request(
+                "PATCH",
+                f"{API}/repos/{owner}/{repo}/releases/assets/{asset['id']}",
+                token, body={"name": want},
+            )
+            print(f"      已修正为：{asset.get('name')}")
+        except Exception as e:
+            print(f"      ⚠ 改名失败（不影响软件更新，软件只看 tag）：{e}")
+
     try:
         info = updater.check(f"https://github.com/{owner}/{repo}", current="0.0.0")
         same = info["latest"] == __version__

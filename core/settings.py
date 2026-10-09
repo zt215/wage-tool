@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """用户配置的持久化：记住上次用过的勾选项、字体、更新地址等。
 
-存放位置优先用程序所在目录（便携），写不进去就退到 %APPDATA%。
+**配置只放 %APPDATA%\\员工工资申报转换工具\\settings.json**，
+不会在程序旁边生成任何文件 —— 程序放在哪个文件夹，那里就只应该有程序本身。
+（早期版本会在 exe 旁边写 settings.json，启动时会自动迁移过来并把旧的删掉。）
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from typing import Any
 
@@ -18,26 +21,42 @@ def app_dir() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _writable(d: str) -> bool:
+def _appdata_dir() -> str:
+    """配置目录：%APPDATA%\\员工工资申报转换工具\\"""
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    d = os.path.join(base, "员工工资申报转换工具")
     try:
         os.makedirs(d, exist_ok=True)
-        probe = os.path.join(d, ".write_test")
-        with open(probe, "w", encoding="utf-8") as f:
-            f.write("ok")
-        os.remove(probe)
-        return True
     except Exception:
-        return False
+        pass
+    return d
 
 
 def default_settings_path() -> str:
-    exe_dir = app_dir()
-    if _writable(exe_dir):
-        return os.path.join(exe_dir, "settings.json")
-    base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    cfg = os.path.join(base, "员工工资申报转换工具")
-    os.makedirs(cfg, exist_ok=True)
-    return os.path.join(cfg, "settings.json")
+    """配置文件的正式位置（永远在 %APPDATA% 下）。"""
+    return os.path.join(_appdata_dir(), "settings.json")
+
+
+def legacy_settings_path() -> str:
+    """老版本会在 exe 旁边写 settings.json —— 只用来迁移。"""
+    return os.path.join(app_dir(), "settings.json")
+
+
+def _migrate_legacy(new_path: str):
+    """把 exe 旁边的老配置搬到 %APPDATA%，顺手把外面那个删掉。"""
+    old = legacy_settings_path()
+    try:
+        if os.path.abspath(old) == os.path.abspath(new_path):
+            return
+        if not os.path.exists(old):
+            return
+        if not os.path.exists(new_path):
+            shutil.copy2(old, new_path)          # 先把设置搬过去
+            with open(new_path, "r", encoding="utf-8") as f:
+                json.load(f)                     # 确认能读，再删旧的
+        os.remove(old)                           # 清掉外面那个
+    except Exception:
+        pass                                     # 迁移失败不影响启动
 
 
 DEFAULTS: dict[str, Any] = {
@@ -73,6 +92,8 @@ class Settings:
 
     def __init__(self, path: str | None = None):
         self.path = path or default_settings_path()
+        if path is None:
+            _migrate_legacy(self.path)
         self.data: dict[str, Any] = dict(DEFAULTS)
         self.load()
 
