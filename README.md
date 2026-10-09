@@ -145,6 +145,26 @@ GitHub 会顺带给出附件的 sha256，所以下载完整性校验照样有。
 > **地址栏支持写多行**，会按顺序依次尝试，前面连不上自动试下一个
 > （以后想加备用源，换行写上就行）。
 
+### 前置：仓库必须至少有一次提交 ⚠️
+
+GitHub 的 Release 是打在 tag 上的，tag 必须指向一个 commit。
+**空仓库（0 个提交）根本建不了 Release** —— 这也是刚建好仓库时
+在仓库页面上看不到 Releases 入口的原因。
+
+解决：双击 **`推送到GitHub.bat`**，把源码推上去（第一次会弹 GitHub 登录）。
+
+> 仓库里**不会**包含含员工姓名/身份证号的 Excel 和截图 —— `.gitignore` 已经挡住了，
+> 只有源码和脚本。推送前可以用 `git status` 确认一下。
+
+### Release 在哪儿
+
+```
+https://github.com/zt215/wage-tool/releases
+```
+
+仓库有内容之后，仓库首页**右侧栏**也会出现 `Releases` 入口。
+（空仓库时右侧栏不显示这个，所以刚建好时找不到是正常的。）
+
 ### 怎么发新版（一键）
 
 1. 改 `core/version.py` 里的 `__version__`，比如 `1.2.0` → `1.3.0`
@@ -265,6 +285,7 @@ GitHub 会顺带给出附件的 sha256，所以下载完整性校验照样有。
 ├─ app.ico                  程序图标
 ├─ 启动工具.bat             一键启动
 ├─ 打包exe.bat              一键打包（生成带版本号的 exe）
+├─ 推送到GitHub.bat         把源码推到 GitHub 仓库
 ├─ 发布到GitHub.bat         一键发布到 GitHub Releases
 ├─ 生成更新包.bat           备用：生成要传到自己服务器的更新包
 ├─ requirements.txt
