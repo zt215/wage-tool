@@ -283,6 +283,18 @@ Token 只存本机 `tools/github_token.txt`（已在 `.gitignore` 里），不�
 国内访问 GitHub 有时要走代理、有时要直连（企业内网尤其）。
 软件会**两种都试**，哪个通用哪个并记住，下次直接用。代理开着、关着都不影响。
 
+### 还有一个坑：github.com 会被墙
+
+国内 `github.com` 经常整站连不上（`api.github.com` 反而是通的）。
+而 Release 附件的默认下载地址正好在 `github.com` 上，**用户会下不动**。
+
+所以软件下载时**优先走 GitHub 的 API 接口**
+（`api.github.com/.../releases/assets/...`），它会直接跳到
+`release-assets.githubusercontent.com`，**完全绕开 github.com**；
+万一 API 那条也不通，再自动退回普通地址重试一次。
+
+> 结论：`api.github.com` 通、`github.com` 不通的情况下，检查更新和下载**都没问题**。
+
 ### 更新是怎么完成的
 
 下载到临时目录 → 比对 sha256（GitHub 会给；不一致就放弃）→

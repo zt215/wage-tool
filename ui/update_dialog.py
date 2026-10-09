@@ -46,14 +46,17 @@ class DownloadThread(QThread):
     failed = Signal(str)
     progress = Signal(int, int)    # (已下载, 总量)
 
-    def __init__(self, url: str, dest: str, parent=None):
+    def __init__(self, url: str, dest: str, alt: str = "", parent=None):
         super().__init__(parent)
         self.url = url
         self.dest = dest
+        self.alt = alt
 
     def run(self):
         try:
-            updater.download(self.url, self.dest, lambda g, t: self.progress.emit(g, t))
+            updater.download(self.url, self.dest,
+                             lambda g, t: self.progress.emit(g, t),
+                             alt=self.alt)
             self.ok.emit(self.dest, updater.sha256_of(self.dest))
         except Exception as e:
             self.failed.emit(str(e))
@@ -243,7 +246,8 @@ class UpdateDialog(QDialog):
         self.btn_do.setVisible(False)
         self.txt_notes.setVisible(False)
 
-        self._downloader = DownloadThread(url, dest, self)
+        self._downloader = DownloadThread(
+            url, dest, alt=(self.info or {}).get("url_alt") or "", parent=self)
         self._downloader.progress.connect(self.on_progress)
         self._downloader.ok.connect(self.on_downloaded)
         self._downloader.failed.connect(self.on_download_failed)

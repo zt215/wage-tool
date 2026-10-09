@@ -51,6 +51,7 @@ def cli_check_update(argv) -> int:
             f"是否有更新：{'是' if info['has_update'] else '否（已是最新）'}",
             f"文件：{info['filename']}（{info['size'] / 1024 / 1024:.1f} MB）",
             f"下载地址：{info['url']}",
+            f"备用地址：{info.get('url_alt') or '（无）'}",
             f"sha256：{info['sha256'] or '（对方未提供）'}",
             f"来源：{info.get('source_kind')}",
             "",
@@ -60,7 +61,7 @@ def cli_check_update(argv) -> int:
 
             t0 = time.time()
             tmp = updater.download_temp_path()
-            updater.download(info["url"], tmp)
+            updater.download(info["url"], tmp, alt=info.get("url_alt") or "")
             dt = max(time.time() - t0, 0.001)
             got = os.path.getsize(tmp)
             mine = updater.sha256_of(tmp)

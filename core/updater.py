@@ -233,9 +233,16 @@ def fetch_github_release(owner: str, repo: str, timeout: int = TIMEOUT_CHECK) ->
     if digest.lower().startswith("sha256:"):
         digest = digest.split(":", 1)[1]
 
+    # 下载地址优先用 API 的附件接口 —— 它走 api.github.com。
+    # 国内 github.com 经常整站连不上，但 api.github.com 一般没问题，
+    # 所以这样能绕开 github.com 把更新包下下来。连不上再退回普通地址。
+    api_asset = str(asset.get("url") or "")
+    browser_url = str(asset.get("browser_download_url") or "")
+
     return {
         "version": tag.lstrip("vV"),
-        "url": asset.get("browser_download_url") or "",
+        "url": api_asset or browser_url,
+        "url_alt": browser_url if api_asset else "",
         # 本机落地文件名由版本号决定，不跟随附件名 ——
         # 附件名可能被浏览器/服务器把中文弄丢（例：员工..._v1.2.0.exe -> _v1.2.0.exe）
         "filename": exe_filename(tag.lstrip("vV")),
@@ -282,6 +289,10 @@ def check(text: str, current: str = __version__, timeout: int = TIMEOUT_CHECK) -
         url = str(data.get("url") or "")
         if url and not url.lower().startswith(("http://", "https://")):
             url = join_url(src, url)
+        # 备用下载地址（GitHub 的浏览器地址，主地址走不通时再试）
+        alt = str(data.get("url_alt") or "")
+        if alt and not alt.lower().startswith(("http://", "https://")):
+            alt = join_url(src, alt)
 
         return {
             "ok": True,
@@ -293,6 +304,7 @@ def check(text: str, current: str = __version__, timeout: int = TIMEOUT_CHECK) -
             "size": int(data.get("size") or 0),
             "sha256": str(data.get("sha256") or ""),
             "url": url,
+            "url_alt": alt,
             # 本机落地文件名统一按版本号生成，不信任对方给的名字
             # （GitHub 网页上传会把中文附件名弄丢，变成 _v1.2.0.exe 这种）
             "filename": exe_filename(latest),
@@ -312,11 +324,7 @@ def check(text: str, current: str = __version__, timeout: int = TIMEOUT_CHECK) -
 # --------------------------------------------------------------------------
 # 下载
 # --------------------------------------------------------------------------
-def download(url: str, dest: str, on_progress=None) -> str:
-    """下载到 dest，on_progress(已下载字节, 总字节)。"""
-    if not url:
-        raise UpdateError("没有拿到下载地址（Release 里没放 exe？）")
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
+def _download_one(url: str, dest: str, on_progress=None) -> str:
     req = urllib.request.Request(url, headers={
         "User-Agent": UA,
         "Accept": "application/octet-stream",
@@ -334,12 +342,32 @@ def download(url: str, dest: str, on_progress=None) -> str:
                 if on_progress:
                     on_progress(got, total)
     except urllib.error.HTTPError as e:
-        raise UpdateError(f"下载失败，服务器返回 {e.code}") from e
+        raise UpdateError(f"服务器返回 {e.code}") from e
     except urllib.error.URLError as e:
-        raise UpdateError(f"下载失败，连不上（{e.reason}）") from e
+        raise UpdateError(f"连不上（{e.reason}）") from e
     if os.path.getsize(dest) == 0:
         raise UpdateError("下载到的文件是空的")
     return dest
+
+
+def download(url: str, dest: str, on_progress=None, alt: str = "") -> str:
+    """下载到 dest，on_progress(已下载字节, 总字节)。
+
+    url 走不通时会自动换 alt 再试一次（GitHub 的主地址在 api.github.com，
+    备用地址在 github.com；国内 github.com 经常连不上）。
+    """
+    if not url:
+        raise UpdateError("没有拿到下载地址（Release 里没放 exe？）")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+    candidates = [u for u in (url, alt) if u]
+    problems = []
+    for u in candidates:
+        try:
+            return _download_one(u, dest, on_progress)
+        except UpdateError as e:
+            problems.append(f"{u}\n  {e}")
+    raise UpdateError("下载失败：\n" + "\n".join(problems))
 
 
 def sha256_of(path: str) -> str:
