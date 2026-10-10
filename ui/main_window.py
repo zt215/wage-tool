@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolButton,
+    QMenu,
     QVBoxLayout,
     QWidget,
 )
@@ -182,51 +184,76 @@ class MainWindow(QMainWindow):
         page2_l.setContentsMargins(10, 10, 10, 10)
         page2_l.setSpacing(8)
 
-        g3 = QGroupBox("样表每个字段 ← 初始表字段（可多选相加，也能设筛选条件）")
+        g3 = QGroupBox("对照表：左边是「样表要填什么」，右边是「这个数从初始表哪儿来」")
         l3 = QVBoxLayout(g3)
+
+        tip = QLabel(
+            "照着念就行，比如「应发工资 ← 把初始表里只挑「所得项目 = 正常工资薪金」的「收入」加起来」。\n"
+            "哪一行看不懂，或觉得对不上，点它右边的「修改」重新挑一次来源。"
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color:#5a6570;background:#f2f6fa;border:1px solid #dde6ef;"
+                          "border-radius:6px;padding:8px;")
+        l3.addWidget(tip)
+
         bar = QHBoxLayout()
-        self.btn_auto = QPushButton("自动识别字段")
+        self.btn_auto = QPushButton("重新自动识别")
+        self.btn_auto.setToolTip("重新根据两张表的字段名，猜一遍对照关系")
         self.btn_auto.clicked.connect(self.do_auto_detect)
-        self.btn_add = QPushButton("添加规则")
-        self.btn_add.clicked.connect(self.add_rule)
-        self.btn_edit = QPushButton("编辑规则")
-        self.btn_edit.clicked.connect(self.edit_rule)
-        self.btn_del = QPushButton("删除规则")
-        self.btn_del.clicked.connect(self.del_rule)
-        self.btn_up = QPushButton("上移")
-        self.btn_up.clicked.connect(lambda: self.move_rule(-1))
-        self.btn_down = QPushButton("下移")
-        self.btn_down.clicked.connect(lambda: self.move_rule(1))
-        self.btn_confirm = QPushButton("全部确认")
-        self.btn_confirm.clicked.connect(self.confirm_all)
-        for b in (self.btn_auto, self.btn_add, self.btn_edit, self.btn_del,
-                  self.btn_up, self.btn_down, self.btn_confirm):
-            bar.addWidget(b)
+        bar.addWidget(self.btn_auto)
+
+        self.chk_only_mapped = QCheckBox("只看有内容的字段")
+        self.chk_only_mapped.setToolTip("勾上：把「不输出」的那些行藏起来，列表更短")
+        self.chk_only_mapped.toggled.connect(lambda _c: self.refresh_rules())
+        bar.addWidget(self.chk_only_mapped)
+
         bar.addStretch(1)
-        self.lbl_rule_tip = QLabel("双击某一行可直接编辑规则")
-        self.lbl_rule_tip.setStyleSheet("color:#8a8a8a;")
-        bar.addWidget(self.lbl_rule_tip)
+        self.lbl_rule_count = QLabel()
+        self.lbl_rule_count.setStyleSheet("color:#8a8a8a;")
+        bar.addWidget(self.lbl_rule_count)
+
+        self.btn_confirm = QPushButton("看着没问题，全部确认")
+        self.btn_confirm.clicked.connect(self.confirm_all)
+        bar.addWidget(self.btn_confirm)
+
+        btn_more = QToolButton()
+        btn_more.setText("更多 ▾")
+        btn_more.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(btn_more)
+        menu.addAction("添加一条对照", self.add_rule)
+        menu.addAction("修改选中的一行", self.edit_rule)
+        menu.addAction("删除选中的一行", self.del_rule)
+        menu.addSeparator()
+        menu.addAction("往上挪一行", lambda: self.move_rule(-1))
+        menu.addAction("往下挪一行", lambda: self.move_rule(1))
+        btn_more.setMenu(menu)
+        bar.addWidget(btn_more)
         l3.addLayout(bar)
 
-        self.tbl_rules = QTableWidget(0, 6)
+        # 5 列：启用 / 样表字段 / 数据从哪来（大白话）/ 状态 / 修改按钮
+        self.tbl_rules = QTableWidget(0, 5)
         self.tbl_rules.setHorizontalHeaderLabels(
-            ["启用", "样表字段", "规则类型", "初始表字段（相加）", "筛选条件", "状态"]
+            ["启用", "样表字段", "← 这个数从初始表哪儿来", "状态", ""]
         )
         self.tbl_rules.verticalHeader().setVisible(False)
         self.tbl_rules.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tbl_rules.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tbl_rules.setWordWrap(False)
         self.tbl_rules.doubleClicked.connect(lambda _i: self.edit_rule())
         self.tbl_rules.itemChanged.connect(self._on_rule_item_changed)
         hh = self.tbl_rules.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(3, QHeaderView.Stretch)
-        hh.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(0, QHeaderView.Fixed)
+        hh.resizeSection(0, 52)
+        hh.setSectionResizeMode(1, QHeaderView.Fixed)
+        hh.resizeSection(1, 130)
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(3, QHeaderView.Fixed)
+        hh.resizeSection(3, 110)
+        hh.setSectionResizeMode(4, QHeaderView.Fixed)
+        hh.resizeSection(4, 82)
         l3.addWidget(self.tbl_rules, 1)
         page2_l.addWidget(g3, 1)
-        self.tabs.addTab(page2, "② 转换规则")
+        self.tabs.addTab(page2, "② 对照字段")
 
         # ================= 第 3 页：输出设置 =================
         page3 = QWidget()
@@ -390,7 +417,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     PAGE_HINTS = [
         "第 1 步：分别添加初始表和样表，字段会自动识别出来",
-        "第 2 步：逐行核对规则，双击任意一行可编辑",
+        "第 2 步：看一眼对照表 —— 左边是样表字段，右边是数据从初始表哪儿来；对不上就点右边的「修改」",
         "第 3 步：设好选项后点「预览转换结果」，结果显示在下方表格；确认没问题再「输出完成表」",
         "这里记录每一步的操作和结果",
     ]
@@ -730,39 +757,103 @@ class MainWindow(QMainWindow):
         self._log(f"自动识别完成：{len(self.rules)} 个样表字段，其中 {ok} 个已匹配到初始表字段，请逐条核对后确认。")
 
     def refresh_rules(self):
+        """把规则画成「一行一句人话」的对照表。"""
+        only = getattr(self, "chk_only_mapped", None) and self.chk_only_mapped.isChecked()
+        shown = [r for r in self.rules if not (only and r.mode == "skip")]
+        self._shown_rules = shown
+
         self._loading = True
-        self.tbl_rules.setRowCount(len(self.rules))
-        for i, r in enumerate(self.rules):
+        self.tbl_rules.clearContents()
+        self.tbl_rules.setRowCount(len(shown))
+        for i, r in enumerate(shown):
             chk = QTableWidgetItem()
             chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             chk.setCheckState(Qt.Checked if r.enabled else Qt.Unchecked)
             self.tbl_rules.setItem(i, 0, chk)
 
-            vals = [r.target, r.mode_label(), r.source_label(), r.filter_label(), r.status_label()]
-            for j, v in enumerate(vals, start=1):
-                it = QTableWidgetItem(str(v))
-                if j == 1:
-                    it.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
-                self.tbl_rules.setItem(i, j, it)
-
             if r.mode == "skip":
-                color = QColor("#b0b0b0")
+                color = QColor("#9aa0a6")
             elif not r.confirmed:
-                color = QColor("#c07a00")
+                color = QColor("#b57200")
             else:
                 color = QColor("#1f7a45")
-            self.tbl_rules.item(i, 5).setForeground(color)
+
+            name = QTableWidgetItem(r.target)
+            name.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+            name.setForeground(QColor("#20262e"))
+            name.setToolTip("样表里的列名：" + r.target)
+            self.tbl_rules.setItem(i, 1, name)
+
+            plain = QTableWidgetItem(r.plain_label())
+            plain.setFont(QFont("Microsoft YaHei", 10))
+            plain.setForeground(color if r.mode == "skip" else QColor("#33404d"))
+            plain.setToolTip(r.plain_label())
+            self.tbl_rules.setItem(i, 2, plain)
+
+            st = QTableWidgetItem(r.status_label())
+            st.setForeground(color)
+            st.setToolTip("「待核对」只是提醒你这行还没点过确认，不影响转换结果")
+            self.tbl_rules.setItem(i, 3, st)
+
+            btn = QPushButton("修改")
+            btn.setFixedSize(70, 26)
+            btn.setToolTip(f"重新给「{r.target}」挑数据来源")
+            btn.clicked.connect(lambda _c=False, rule=r: self._edit_this(rule))
+            holder = QWidget()
+            hl = QHBoxLayout(holder)
+            hl.setContentsMargins(0, 0, 6, 0)
+            hl.addWidget(btn, 0, Qt.AlignRight)
+            self.tbl_rules.setCellWidget(i, 4, holder)
+
+            self.tbl_rules.setRowHeight(i, 40)
+
         self._loading = False
+        if hasattr(self, "lbl_rule_count"):
+            total = len(self.rules)
+            mapped = sum(1 for r in self.rules if r.mode != "skip")
+            waiting = sum(1 for r in self.rules if r.mode != "skip" and not r.confirmed)
+            txt = f"样表 {total} 列，其中 {mapped} 列有数据来源"
+            if only and len(shown) != total:
+                txt += f"（已藏起 {total - len(shown)} 列不输出的）"
+            if waiting:
+                txt += f"；还有 {waiting} 列没确认"
+            self.lbl_rule_count.setText(txt + "　")
 
     def _on_rule_item_changed(self, item: QTableWidgetItem):
         if self._loading:
             return
         if item.column() == 0:
-            self.rules[item.row()].enabled = item.checkState() == Qt.Checked
+            r = self._rule_at_table_row(item.row())
+            if r is not None:
+                r.enabled = item.checkState() == Qt.Checked
+
+    def _edit_this(self, rule):
+        """点「修改」按钮：按对象身份找到这一行（不靠 == 比较，避免串行）。"""
+        idx = next((i for i, r in enumerate(self.rules) if r is rule), -1)
+        if idx < 0:
+            return
+        self._edit_rule_dialog(rule, insert=False, index=idx)
+
+    def _rule_at_table_row(self, row: int):
+        """表格行 -> 规则对象（表格可能只显示了有内容的那部分）。"""
+        shown = getattr(self, "_shown_rules", None)
+        if shown is not None:
+            if 0 <= row < len(shown):
+                return shown[row]
+            return None
+        if 0 <= row < len(self.rules):
+            return self.rules[row]
+        return None
 
     def _current_row(self) -> int:
+        """返回选中规则在 self.rules 里的下标，没选中返回 -1。"""
         sel = self.tbl_rules.selectionModel().selectedRows()
-        return sel[0].row() if sel else -1
+        if not sel:
+            return -1
+        r = self._rule_at_table_row(sel[0].row())
+        if r is None:
+            return -1
+        return next((i for i, x in enumerate(self.rules) if x is r), -1)
 
     def add_rule(self):
         if not self.source or not self.sample:
@@ -818,8 +909,13 @@ class MainWindow(QMainWindow):
             if r.mode != "skip":
                 r.confirmed = True
         self.refresh_rules()
-        self._log("已将全部规则标记为「已确认」。")
-        QMessageBox.information(self, "完成", "全部规则已确认。")
+        n = sum(1 for r in self.rules if r.mode != "skip")
+        self._log(f"对照表已全部确认（{n} 列有数据来源）。")
+        QMessageBox.information(
+            self, "完成",
+            f"对照表已确认（{n} 列有数据来源）。\n\n"
+            "接下来到第 ③ 步，点「预览转换结果」看看填出来的样子对不对。",
+        )
 
     # ==================================================================
     # ④ 转换 / 输出

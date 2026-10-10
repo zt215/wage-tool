@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 APP_NAME = "员工工资申报转换工具"
 # 程序文件名统一用「名字_v版本号.exe」
 EXE_STEM = "员工工资申报转换工具"

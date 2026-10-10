@@ -11,17 +11,21 @@ from dataclasses import dataclass, field, asdict
 
 from .excel_reader import cell_text
 
-# 规则类型：键 -> 界面显示名
+# 规则类型：键 -> 界面显示名（用大白话，别用「求和/取首个」这种词）
 MODE_LABELS = {
-    "sum": "求和（可多字段相加）",
-    "first": "取首个非空值",
-    "last": "取最后一个非空值",
-    "count": "计数（行数）",
-    "const": "固定值",
-    "seq": "自动编号",
-    "skip": "不输出（留空）",
+    "sum": "把金额加起来（工资、社保用这个）",
+    "first": "直接照抄（姓名、日期这种文字用这个）",
+    "last": "取最后一个（很少用）",
+    "count": "数一数有几条（很少用）",
+    "const": "每一行都固定填同一个值",
+    "seq": "自动编号 1、2、3…",
+    "skip": "不输出（样表这一列留空）",
 }
 MODE_KEYS = list(MODE_LABELS.keys())
+
+
+def _quote(names) -> str:
+    return "、".join(f"「{n}」" for n in names if n)
 
 
 @dataclass
@@ -55,10 +59,35 @@ class Rule:
 
     def status_label(self) -> str:
         if self.mode == "skip":
-            return "无对应字段"
+            return "不输出"
         if not self.enabled:
             return "已停用"
-        return "已确认" if self.confirmed else "待确认"
+        return "已确认" if self.confirmed else "待核对"
+
+    def plain_label(self) -> str:
+        """把这条规则写成一句大白话，界面上直接显示这句（不需要用户懂「规则类型」）。"""
+        if self.mode == "skip":
+            return "样表这一列留空，不填数据"
+        if self.mode == "const":
+            if self.const_value:
+                return f"每一行都固定填「{self.const_value}」"
+            return "固定填一个值（还没填）"
+        if self.mode == "seq":
+            return "自动编号：1、2、3…按行一直排下去"
+        if self.mode == "count":
+            return "数一数有几条记录，把条数填进来"
+
+        srcs = _quote(self.sources)
+        if not srcs:
+            return "还没选数据来源（点右边的「修改」挑一个）"
+        cond = ""
+        if self.filter_field and self.filter_value:
+            cond = f"只挑「{self.filter_field} = {self.filter_value}」的"
+        if self.mode == "sum":
+            return f"把初始表里{cond}{srcs}加起来"
+        if self.mode == "first":
+            return f"照抄初始表{cond}{srcs}的值"
+        return f"取初始表{cond}{srcs}的最后一个值"
 
     def to_dict(self) -> dict:
         return asdict(self)
