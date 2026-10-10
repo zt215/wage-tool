@@ -52,6 +52,16 @@ UA = f"WageToolPublisher/{__version__}"
 
 TOKEN_PREFIXES = ("ghp_", "github_pat_", "gho_", "ghs_", "ghu_")
 
+# Release 附件名固定用纯 ASCII：
+# GitHub 会把附件名里的中文静默丢掉（员工工资申报转换工具_v1.2.4.exe -> _v1.2.4.exe），
+# 而且事后改名（PATCH）也一样丢——返回 200 但名字没变。所以干脆用英文名。
+# 软件端不看附件名：它按 tag 里的版本号自己生成落地文件名。
+ASSET_STEM = "wage-tool"
+
+
+def asset_name(version: str = "") -> str:
+    return f"{ASSET_STEM}_v{version or __version__}.exe"
+
 
 class AuthError(Exception):
     """token 无效 / 权限不够。"""
@@ -242,8 +252,10 @@ def verify_token(token: str) -> str:
     return me.get("login") or "?"
 
 
-def upload_asset(owner: str, repo: str, release_id: int, path: str, token: str):
-    name = os.path.basename(path)
+def upload_asset(owner: str, repo: str, release_id: int, path: str, token: str,
+                 name: str = ""):
+    """上传附件。name 必须是纯 ASCII（GitHub 会丢掉附件名里的中文）。"""
+    name = (name or os.path.basename(path)).strip()
     size = os.path.getsize(path)
     url = (f"{UPLOAD}/repos/{owner}/{repo}/releases/{release_id}"
            f"/assets?name={urllib.parse.quote(name)}")
@@ -326,6 +338,7 @@ def main():
     print(f"仓库    : {owner}/{repo}")
     print(f"版本    : {__version__}（tag {tag}）")
     print(f"程序    : {os.path.basename(exe)}")
+    print(f"附件名  : {asset_name()}（GitHub 附件名不能用中文）")
     print()
 
     # 1) 验证 token（失效就现场换一个）
@@ -377,32 +390,23 @@ def main():
         print(f"      已创建：{release.get('html_url')}")
     release_id = release["id"]
 
-    # 4) 传附件（同名的先删掉，保证覆盖）
+    # 4) 传附件（先把已有的 exe 清掉，保证覆盖）
+    # 注意：GitHub 上传时会把中文附件名截断（员工..._v1.2.4.exe -> _v1.2.4.exe），
+    # 所以不能只按完整名比对 —— 否则旧的截断附件删不掉，再传就会 422 冲突。
     print("[4/4] 上传并校验…")
     for a in (release.get("assets") or []):
-        if a.get("name") == os.path.basename(exe):
-            print(f"      同名附件已存在，先删除旧的（{a['name']}）")
+        an = str(a.get("name") or "")
+        if an.lower().endswith(".exe"):
+            print(f"      已有附件先删掉（{an}）")
             api_request("DELETE",
                         f"{API}/repos/{owner}/{repo}/releases/assets/{a['id']}", token)
-    asset = upload_asset(owner, repo, release_id, exe, token)
-    print(f"      上传完成：{asset.get('name')}"
-          f"（{asset.get('size', 0) / 1024 / 1024:.1f} MB）")
-
-    # GitHub 网页上传历史上会把中文附件名截断（员工..._v1.2.0.exe -> _v1.2.0.exe），
-    # 上传完检查一下，被改了就用 API 改回来。
-    want = os.path.basename(exe)
+    want = asset_name()
+    asset = upload_asset(owner, repo, release_id, exe, token, want)
     got = str(asset.get("name") or "")
+    print(f"      上传完成：{got}（{asset.get('size', 0) / 1024 / 1024:.1f} MB）")
     if got != want:
-        print(f"      ⚠ 附件名被截断成了 {got!r}，正在改回 {want!r} …")
-        try:
-            asset = api_request(
-                "PATCH",
-                f"{API}/repos/{owner}/{repo}/releases/assets/{asset['id']}",
-                token, body={"name": want},
-            )
-            print(f"      已修正为：{asset.get('name')}")
-        except Exception as e:
-            print(f"      ⚠ 改名失败（不影响软件更新，软件只看 tag）：{e}")
+        print(f"      ⚠ 附件名对不上（想要 {want!r}，得到 {got!r}）"
+              "——不影响软件更新，软件只看 tag 和版本号")
 
     try:
         info = updater.check(f"https://github.com/{owner}/{repo}", current="0.0.0")
